@@ -12,4 +12,4 @@ wheels/
 ev-index.txt
 evaluation_results.csv
 .env.bak
-output/
+.DS_Store
