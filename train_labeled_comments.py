@@ -16,10 +16,12 @@ def run(folder):
     annotated=pd.read_csv(folder/'ai_annotated_comments.csv',encoding='utf-8-sig',keep_default_na=False)
     raw=pd.read_csv(folder/'all_comments.csv',encoding='utf-8-sig',keep_default_na=False)
     parents=raw.set_index('comment_id').text_raw.to_dict()
+    annotated['text']=annotated.text_raw.map(clean_text)
     annotated['text_model']=annotated.apply(lambda r:clean_text(
         '원댓글: '+parents.get(r.parent_id,'')+' 답글: '+r.text_raw if r.comment_type=='reply' else r.text_raw),axis=1)
     annotated['group_id']=connected_groups(annotated.rename(columns={'text_model':'model_input'}))
-    binary=annotated[annotated.sentiment_ai.isin(['긍정','부정']) & annotated.reaction_target_ai.ne('기타·대인·상영환경')].copy()
+    allowed_targets={'작품 전체·시리즈','작품·시리즈','배우·캐릭터','장면·서사','장면·서사·설정','영상·제작자'}
+    binary=annotated[annotated.sentiment_ai.isin(['긍정','부정']) & annotated.reaction_target_ai.isin(allowed_targets)].copy()
     binary['label']=binary.sentiment_ai.map({'부정':0,'긍정':1})
     binary['text']=binary.text_model
     binary['review_id']=binary.comment_id
@@ -73,7 +75,8 @@ def run(folder):
         'test_confusion_matrix_labels_0_1':matrix,'human_gold_accuracy':None,'human_gold_f1':None,
         'warning':'Held-out scores are agreement with AI labels, not validated human accuracy. Full-data predictions include training rows and are marked by split.',
         'input_context':'Reply model input contains parent text plus reply. Same threads/normalized duplicate texts share a group.',
-        'binary_filter':'Only AI positive/negative targeting works, characters, scenes, or video/creator; excludes neutral/mixed/unclear and other/person/cinema targets.'}
+        'binary_filter':'Only AI positive/negative targeting works, characters, scenes, or video/creator; explicit allowlist excludes poster, exhibition, viewing markers, other/person targets and neutral/mixed/unclear.',
+        'annotation_review':'second semantic review' if 'semantic_review_status' in annotated.columns else 'initial AI annotations'}
     (output/'metrics.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps(meta,ensure_ascii=False,indent=2))
     return result,meta

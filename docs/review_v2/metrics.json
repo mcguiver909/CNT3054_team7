@@ -1,0 +1,71 @@
+{
+  "label_source": "AI semantic annotations by Codex, all 2983 comments read; not human-adjudicated gold",
+  "training_source": "ai_annotated_youtube_unverified",
+  "data": {
+    "input_rows": 1292,
+    "deduplicated_rows": 1287,
+    "duplicates_removed": 5,
+    "groups": 1054,
+    "source_types": [
+      "ai_annotated_youtube_unverified"
+    ]
+  },
+  "training_sha256": "4679a2b64b61c6c984909d1b424539b3c3632dc0cbfb30b09979e29d2e6043c2",
+  "seed": 42,
+  "split_sizes": {
+    "train": 767,
+    "validation": 264,
+    "test": 256
+  },
+  "split_label_counts": {
+    "train": {
+      "0": 364,
+      "1": 403
+    },
+    "validation": {
+      "0": 125,
+      "1": 139
+    },
+    "test": {
+      "0": 122,
+      "1": 134
+    }
+  },
+  "selected_model": "unigram_bigram",
+  "selection_metric": "validation macro-F1; ties prefer unigram",
+  "fit_scope": "train only, no validation refit",
+  "test_scores": [
+    {
+      "model": "majority_baseline",
+      "accuracy": 0.5234375,
+      "precision_positive": 0.5234375,
+      "recall_positive": 1.0,
+      "f1_positive": 0.6871794871794872,
+      "f1_macro": 0.3435897435897436
+    },
+    {
+      "model": "unigram_bigram",
+      "accuracy": 0.796875,
+      "precision_positive": 0.7971014492753623,
+      "recall_positive": 0.8208955223880597,
+      "f1_positive": 0.8088235294117647,
+      "f1_macro": 0.7960784313725491
+    }
+  ],
+  "test_confusion_matrix_labels_0_1": [
+    [
+      94,
+      28
+    ],
+    [
+      24,
+      110
+    ]
+  ],
+  "human_gold_accuracy": null,
+  "human_gold_f1": null,
+  "warning": "Held-out scores are agreement with AI labels, not validated human accuracy. Full-data predictions include training rows and are marked by split.",
+  "input_context": "Reply model input contains parent text plus reply. Same threads/normalized duplicate texts share a group.",
+  "binary_filter": "Only AI positive/negative targeting works, characters, scenes, or video/creator; explicit allowlist excludes poster, exhibition, viewing markers, other/person targets and neutral/mixed/unclear.",
+  "annotation_review": "second semantic review"
+}

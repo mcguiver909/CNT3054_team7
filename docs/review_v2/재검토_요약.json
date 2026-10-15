@@ -1,0 +1,37 @@
+{
+  "reviewed_rows": 2983,
+  "top_level": 2084,
+  "replies": 899,
+  "changed_label_pairs": 318,
+  "sentiment_changes": 14,
+  "target_changes": 307,
+  "sentiment_counts": {
+    "중립": 1245,
+    "긍정": 730,
+    "부정": 848,
+    "혼합": 49,
+    "판단 불가": 111
+  },
+  "target_counts": {
+    "배우·캐릭터": 445,
+    "장면·서사·설정": 725,
+    "작품·시리즈": 689,
+    "영상·제작자": 536,
+    "기타·대화·대상불명": 312,
+    "시청표시·시간정보": 11,
+    "상영·배급·관람환경": 195,
+    "홍보물·포스터": 70
+  },
+  "old_unmatched_rows": 1494,
+  "old_unmatched_semantic_targets": {
+    "영상·제작자": 280,
+    "기타·대화·대상불명": 268,
+    "배우·캐릭터": 213,
+    "작품·시리즈": 280,
+    "장면·서사·설정": 260,
+    "상영·배급·관람환경": 134,
+    "홍보물·포스터": 59
+  },
+  "source_sha256": "ae0634bba94c3d76b143038a3137ed667c86f22739f1ff60a9160d000a2fcdb4",
+  "method": "全2983 AI second semantic review; primary target mutually exclusive; not human gold; raw text and IDs preserved"
+}
