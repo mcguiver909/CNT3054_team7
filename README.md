@@ -1,300 +1,117 @@
-# CNT3054 7조 — 시리즈 콘텐츠 유튜브 댓글 반응 분석
+# CNT3054 7조 시리즈 콘텐츠 유튜브 댓글 반응 분석
 
-문화콘텐츠와 자연어처리(CNT3054) 팀 프로젝트 저장소입니다.
-YouTube 댓글을 수집해 Supabase(PostgreSQL)에 저장하고, 시리즈·리메이크·시즌제 콘텐츠에 대한 반응 차이를 분석합니다.
+마블 관련 유튜브 영상 4개의 공개 댓글과 답글을 수집하고, 댓글의 반응 대상·구분·감성을 함께 분석하는 문화콘텐츠와 자연어처리 팀 프로젝트입니다. 기존 수집 구조와 6주차 TF-IDF·로지스틱 회귀 실습 코드를 확장했습니다.
 
-수업 실습 코드의 원본은 [111usionBin/jtbc-2025](https://github.com/111usionBin/jtbc-2025)이며, 우리 주제에 맞게 수집·저장 코드를 새로 작성했습니다.
+## 최신 수집 결과
 
-## 전체 댓글 수집과 댓글 구분 및 TF-IDF 감성분류
+2026년 10월 15일 23:19 KST 수집 실행의 API 통계입니다. 조회수·좋아요·댓글 수는 이후 달라질 수 있습니다.
 
-기존 수집 코드에 공개 답글 페이지 조회, 원댓글-답글 연결, 표5 방식의 댓글 구분 및 6주차 방식의 TF-IDF·로지스틱 회귀 분석을 추가했습니다. 영상 목록은 videos.json에 기존 몰아보기와 추가 영상 3개를 등록했습니다. 새 실제 데이터와 실험 결과는 저장소에 포함하지 않고 별도 전달합니다.
+| 영상 | 조회수 | 좋아요 | API 댓글 수 | 최상위 | 답글 | 수집 합계 |
+|---|---:|---:|---:|---:|---:|---:|
+| [마블 22편 몰아보기](https://youtu.be/lekS3GR1jps) | 6,063,118 | 22,261 | 682 | 457 | 225 | 682 |
+| [엔드게임 앙코르](https://youtu.be/C-NKIKiQCNE) | 3,166,090 | 10,976 | 1,330 | 878 | 452 | 1,330 |
+| [둠스데이 전 필수 내용](https://youtu.be/LMtoL902Ddo) | 2,295,666 | 10,559 | 595 | 484 | 111 | 595 |
+| [닥터둠 전리품과 빌런 떡밥](https://youtu.be/MHLoq1b2HQE) | 1,049,055 | 4,402 | 376 | 265 | 111 | 376 |
+| **합계** | | | **2,983** | **2,084** | **899** | **2,983** |
+
+최상위 댓글은 영상별 5·9·5·3페이지에서 `no_next_page`로 종료했습니다. 답글이 있는 255개 스레드도 마지막 페이지까지 조회했고 오류는 없었습니다. 고유 댓글 ID, 부모 댓글 연결, CSV/JSON 건수와 API 댓글 합계가 일치했습니다. 삭제·숨김 등 API에 공개되지 않는 댓글은 포함하지 않습니다.
+
+기존 보고서의 몰아보기 영상 666개는 과거 수집 시점의 수치입니다. 이번 재수집 시점에는 682개입니다. 기존 1차 데이터 448행은 당시 최상위 댓글만 저장한 기록입니다.
+
+## 전체 댓글 라벨링
+
+전체 2,983개 원문과 답글 문맥을 읽어 AI 참조 라벨과 반응 대상을 작성했습니다. 사람의 합의 정답으로 확정된 라벨은 아닙니다. 정보·질문은 중립으로, 상반된 감정이 공존하면 혼합으로, 문맥만으로 판단하기 어려우면 판단 불가로 보존했습니다.
+
+| 영상 | 긍정 | 부정 | 중립 | 혼합 | 판단 불가 | 합계 |
+|---|---:|---:|---:|---:|---:|---:|
+| 마블 22편 몰아보기 | 189 | 269 | 173 | 17 | 34 | 682 |
+| 엔드게임 앙코르 | 307 | 285 | 676 | 15 | 47 | 1,330 |
+| 둠스데이 전 필수 내용 | 186 | 142 | 242 | 8 | 17 | 595 |
+| 닥터둠 전리품과 빌런 떡밥 | 45 | 151 | 150 | 9 | 21 | 376 |
+| **합계** | **727** | **847** | **1,241** | **49** | **119** | **2,983** |
+
+반응 대상은 작품 전체·시리즈, 배우·캐릭터, 장면·서사, 영상·제작자, 기타·대인·상영환경으로 구분합니다. 아래 구분은 표5의 키워드 예시를 확장한 다중 태그 규칙이며, 의미를 읽어 작성한 반응 대상과는 별도입니다. 원 표5의 사전 전체가 없어 원 집계와 완전히 동일한 규칙이라고 주장하지 않습니다.
+
+| 댓글 구분 | 건수 | 전체 대비 | 긍정 | 부정 | 중립 | 혼합 | 판단 불가 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 작품·캐릭터 언급 | 1,179 | 39.5% | 247 | 351 | 545 | 30 | 6 |
+| 과거·현재 대비 및 하락 인식 | 213 | 7.1% | 39 | 97 | 68 | 9 | 0 |
+| 영상·제작자 대상 반응 | 219 | 7.3% | 150 | 21 | 41 | 6 | 1 |
+| 타임스탬프 포함 | 186 | 6.2% | 37 | 20 | 125 | 2 | 2 |
+| 기타·키워드 미일치 | 1,494 | 50.1% | 335 | 453 | 581 | 15 | 110 |
+
+한 댓글에 여러 태그가 붙을 수 있어 행의 합계는 전체 댓글 수를 초과합니다. 이 표의 감성은 AI 참조 라벨이며 LR 예측과 별도 열로 유지합니다.
+
+## TF-IDF·로지스틱 회귀 실험
+
+최신 실험은 실제 수집 댓글의 AI 참조 라벨을 사용합니다. 기존 합성 리뷰 120개 실습과 외부 영화 리뷰 코퍼스를 최신 실험의 학습 데이터로 사용하지 않았습니다.
+
+- 작품·캐릭터·장면·영상 대상의 명확한 긍정/부정만 사용하고 중립·혼합·판단 불가·기타 대상을 제외했습니다.
+- 입력 1,349행에서 정규화 중복 5행을 제거해 1,344행, 연결 그룹 1,098개를 사용했습니다.
+- 동일 스레드와 동일 정규화 본문은 같은 그룹에 묶었습니다. 답글 모델 입력에는 부모 댓글 문맥을 포함했습니다.
+- seed=42, train 800 / validation 264 / test 280입니다. 단어장·IDF·LR 계수는 train에서만 학습했습니다.
+- 검증 Macro-F1로 후보를 선택했으며 validation을 합쳐 재학습하지 않았습니다. LR 설정은 C=1.0, max_iter=1000입니다.
+
+| 검증 후보 | Accuracy | Macro-F1 |
+|---|---:|---:|
+| 다수 클래스 기준선 | 0.5000 | 0.3333 |
+| **Unigram + LR** | **0.6553** | **0.6517** |
+| Unigram + Bigram + LR | 0.6288 | 0.6191 |
+
+| 최종 테스트 | Accuracy | Macro-F1 |
+|---|---:|---:|
+| 다수 클래스 기준선 | 0.5036 | 0.3349 |
+| 선택된 Unigram + LR | 0.7143 | 0.7122 |
+
+긍정 Precision 0.6871, Recall 0.7943, F1 0.7368입니다. 혼동행렬은 행=AI 참조 라벨, 열=모델 예측, 순서=부정·긍정일 때 `[[88, 51], [29, 112]]`입니다.
+
+**이 점수는 AI 참조 라벨과의 홀드아웃 일치도이며 사람 정답에 대해 검증된 정확도가 아닙니다.** 전체 댓글 예측 파일에는 학습 행도 포함되므로 분할 표시를 확인해야 합니다. 전체 예측 비율을 테스트 성능이나 작품 관객 만족도로 해석하지 않습니다.
+
+## 설치와 실행
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-analysis.txt
-# .env에 YOUTUBE_API_KEY 설정 (기존 google_cloud_api_key도 지원)
+```
+
+프로젝트의 `.env`에 `YOUTUBE_API_KEY=발급받은키`를 설정합니다. 기존 `google_cloud_api_key` 이름도 지원합니다. API 키와 `.env`는 커밋하지 않습니다. 영상 목록은 `videos.json`에서 관리합니다.
+
+```bash
+# 네 영상 최상위 댓글과 답글 수집 및 기본 분석
 .venv/bin/python run_pipeline.py --include-replies --max-pages 100
+
+# 댓글 구분과 기본 예측의 교차 집계
+.venv/bin/python categorize_comments.py --predictions output/실행시각/analysis_all/predictions.csv --output output/실행시각/categories
+
+# 전체 원본과 별도 작성한 AI 참조 라벨 파일을 준비한 후 최신 실험
+.venv/bin/python train_labeled_comments.py --folder output/실행시각
 ```
 
-- `collect_comments.py`: 기존 최상위 댓글 수집·ID 중복 제거·12열 CSV 유지, JSON 추가.
-- `collect_replies.py`: comments.list(parentId=...)로 공개 답글의 모든 페이지를 수집. all_comments.csv/json에 parent_id와 comment_type을 기록.
-- `analyze_comments.py`: 6주차 합성 리뷰로 학습한 TF-IDF/LR의 탐색용 추론. 실제 댓글 성능과 구분.
-- `categorize_comments.py` + `comment_categories.json`: 작품·캐릭터 언급, 과거·현재 대비·하락 인식, 영상·제작자 반응, 타임스탬프를 다중 태그로 기록하고 감성 예측과 교차 집계.
-- `train_labeled_comments.py`: 별도로 라벨링한 실제 댓글의 AI 참조 라벨을 사용해 그룹 분할·후보 비교·최종 테스트·오류·혼동행렬을 저장. AI 라벨과 사람 합의 정답을 구분.
-- `week06/`: 업로드 ZIP의 학습 코드·합성 리뷰·원본 테스트를 유지.
+`run_pipeline.py`의 기본 분석은 기존 합성 리뷰 학습 모델을 사용하는 탐색용 경로입니다. **위 최신 결과를 재현하려면 별도로 라벨 파일을 준비하고 `train_labeled_comments.py`를 실행해야 합니다.** 라벨 파일 형식과 사람 합의 라벨 학습 방법은 [실행 안내](실행안내.md)를 참조하세요. 수집을 다시 하면 댓글과 통계가 달라질 수 있습니다.
 
-[실행 안내](실행안내.md)에 출력 파일 구분과 라벨 출처, 학습/검증/테스트 사용법을 정리했습니다. API 키·.env·로컬 환경·새 실험 결과는 커밋하지 않습니다. 기존 Supabase 업로더는 최상위 댓글용이며 답글 관계 저장은 별도 스키마 확장이 필요합니다.
-
-아래는 기존 프로젝트 설명과 1차 수집 기록입니다.
-
-## 주제 (논의 중)
-
-- **시리즈 영화**: 장르별 비교, 흥행도 차이가 큰 편끼리의 리뷰 차이, 시리즈 장기화에 따른 반응 변화
-- **리메이크 영화**: 원작과 리메이크작 비교
-- **시즌제 드라마·예능**
-- **콘텐츠 매체별 반응 차이**
-
-## 진행 상황
-
-| 단계 | 상태 | 결과 |
-|---|---|---|
-| 1차 시행 댓글 수집 | 완료 | 마블 몰아보기 영상 1편, 최상위 댓글 448행 |
-| Supabase 저장 | 완료 | `lab_videos` 1행, `lab_comments` 448행 |
-| 중복 저장 방지 확인 | 완료 | 같은 폴더 재업로드 시 추가 0행 |
-| LLM 분석 | 보류 | 코드 준비됨, OpenAI 키 필요 |
-
-**1차 시행 대상**: [마블영화 22편 한번에 몰아보기](https://youtu.be/lekS3GR1jps) (머프무비's 영화 뽀개기, 2022-07-16 공개, 조회수 약 585만)
-
-- 영상 통계상 댓글 수는 666개지만 답글이 포함된 수치입니다. 최상위 댓글은 448개입니다.
-- 댓글 작성일 범위: 2022-07-16 ~ 2026-09-06
-- 요약·몰아보기 영상이라 개별 작품 평가보다 영상 자체에 대한 반응이 많습니다. 편별 비교를 하려면 작품별 영상을 따로 수집해야 합니다.
-
-## 처리 흐름
-
-```
-YouTube Data API v3
-      │  collect_comments.py
-      ▼
-output/<실행시각>/comments.csv + collection_log.json
-      │  upload_supabase.py
-      ▼
-Supabase PostgreSQL (lab_videos, lab_comments)
-      │  llm-ev.py  (보류)
-      ▼
-scored.csv + summary.csv
-```
-
-수집과 저장을 분리했습니다. 저장을 다시 해야 할 때 API를 또 호출하지 않아도 되므로 할당량이 들지 않습니다.
-
-## 설치
-
-Python **3.11**이 필요합니다. 3.13에서는 `pydub`가 사용하는 `audioop` 모듈이 표준 라이브러리에서 빠져 있어 동작하지 않습니다.
-
-```bash
-# uv 사용 (권장, .python-version의 3.11을 자동으로 맞춤)
-uv venv
-uv pip install -r requirements-uv.txt
-
-# uv 없이
-python3.11 -m venv .venv
-./.venv/bin/python -m pip install -r requirements-uv.txt
-```
-
-Windows에서는 `./.venv/bin/python` 대신 `.\.venv\Scripts\python.exe`를 사용합니다.
-VS Code에서는 `Python: Select Interpreter`로 `.venv`를 선택합니다.
-
-## 환경 변수 (.env)
-
-프로젝트 폴더에 `.env` 파일을 만듭니다. **이 파일은 `.gitignore`에 들어 있으며 절대 커밋하지 않습니다.**
-
-```
-google_cloud_api_key=AIza...
-SUPABASE_CONNECTION_STRING=postgresql://postgres.<프로젝트참조값>:<DB비밀번호>@aws-0-<지역>.pooler.supabase.com:5432/postgres
-```
-
-### Google API 키
-
-Google Cloud 콘솔에서 프로젝트 생성 → YouTube Data API v3 사용 설정 → 사용자 인증 정보 → API 키.
-정상적인 키는 `AIza`로 시작합니다.
-
-### Supabase 연결 문자열
-
-Supabase 콘솔 상단 **Connect** → Type `URI` → **Session pooler**에서 복사합니다.
-
-| 방식 | 호스트 | 포트 | 사용 |
-|---|---|---|---|
-| Direct | `db.<ref>.supabase.co` | 5432 | 사용 안 함 (IPv6 전용) |
-| **Session pooler** | `aws-0-<지역>.pooler.supabase.com` | 5432 | **사용** |
-| Transaction pooler | 같은 호스트 | 6543 | 사용 안 함 |
-
-- Direct 연결은 IPv6 주소만 있어서 IPv4 네트워크(대부분의 가정·학교망)에서는 접속되지 않습니다.
-- Project URL(`https://<ref>.supabase.co`)과 publishable/anon 키는 이 코드에서 쓰지 않습니다. 코드는 `psycopg2`로 Postgres에 직접 연결합니다.
-- Supabase CLI(`supabase login`, `init`, `link`)도 필요하지 않습니다.
-
-## 실행
-
-### 1. 댓글 수집
-
-```bash
-# API 연결과 영상 정보만 확인
-./.venv/bin/python collect_comments.py --check
-
-# 1차 시행 영상 전체 수집 (영상 지정을 생략하면 마블 몰아보기 영상)
-./.venv/bin/python collect_comments.py --max-pages 10
-
-# 다른 영상 한 편
-./.venv/bin/python collect_comments.py --video "영상_URL" --label "아이언맨" --entry "1편" --max-pages 10
-
-# 최근 7일 댓글만
-./.venv/bin/python collect_comments.py --video "영상_URL" --since-days 7 --max-pages 10
-```
-
-여러 편을 비교할 때는 manifest 파일을 만듭니다.
-
-```json
-[
-  {"label": "아이언맨", "entry": "1편", "url": "https://youtu.be/..."},
-  {"label": "아이언맨", "entry": "2편", "url": "https://youtu.be/..."},
-  {"label": "아이언맨", "entry": "3편", "url": "https://youtu.be/..."}
-]
-```
-
-```bash
-./.venv/bin/python collect_comments.py --manifest videos.json --max-pages 10
-```
-
-| 옵션 | 의미 |
-|---|---|
-| `--video` | 영상 URL 또는 11자리 ID. 여러 번 지정 가능 |
-| `--manifest` | 비교할 영상 목록 JSON |
-| `--label` / `--entry` | 비교 그룹 이름 / 그룹 안의 위치 (1편, 원작, 시즌3 등) |
-| `--max-pages` | 영상당 최대 페이지 수. 한 페이지 최대 100개 |
-| `--since-days` | 최근 N일 이내 작성된 댓글만 |
-| `--check` | 연결 확인만 하고 종료 |
-
-### 2. Supabase 저장
-
-```bash
-./.venv/bin/python upload_supabase.py --check-db   # 연결 확인
-./.venv/bin/python upload_supabase.py --init-db    # 테이블 생성 (최초 1회)
-./.venv/bin/python upload_supabase.py              # 가장 최근 수집 폴더 업로드
-./.venv/bin/python upload_supabase.py --folder output/20260915_161353
-./.venv/bin/python upload_supabase.py --count      # 영상별 저장 건수 조회
-```
-
-### 3. LLM 분석 (보류)
-
-`.env`에 `openai_api_key`를 추가하면 실행할 수 있습니다.
-
-```bash
-./.venv/bin/python llm-ev.py --limit 30   # 30개만 먼저 채점해 비용 확인
-./.venv/bin/python llm-ev.py              # 가장 최근 수집 폴더 전체
-```
-
-댓글마다 다음 항목을 채점해 `scored.csv`로 저장하고, 라벨·편별 평균을 `summary.csv`로 저장합니다.
-
-| 항목 | 의미 |
-|---|---|
-| `sentiment` | -1(매우 부정) ~ 1(매우 긍정) |
-| `aspect` | 스토리, 연기, 연출, 액션, 영상미, 음악, 캐릭터, 비교, 팬덤, 기타 |
-| `is_comparative` / `compares_to` | 다른 편·원작·이전 시즌과 비교하는 댓글인지, 무엇과 비교하는지 |
-| `series_fatigue` | 시리즈 장기화에 대한 피로감 표현 여부 |
-
-## 결과 데이터
-
-### comments.csv
-
-한 행은 최상위 댓글 1개입니다.
-
-| 열 | 내용 |
-|---|---|
-| `label`, `entry` | 비교 그룹, 그룹 안의 위치 |
-| `video_id`, `video_title` | 영상 ID, 제목 |
-| `comment_id` | 댓글 고유 ID (중복 판단 기준) |
-| `author` | 작성자 표시 이름 |
-| `text_raw` | API에서 받은 댓글 본문 (가공 없음) |
-| `published_at`, `updated_at` | 댓글 작성·수정 시각 (UTC) |
-| `like_count`, `reply_count` | 수집 시점의 좋아요 수, 답글 수 |
-| `collected_at` | 수집 실행 시각 (UTC) |
-
-### collection_log.json
-
-수집 조건(`order`, `max_pages`, `since_days`)과 영상별 결과(`pages_received`, `stop_reason`, `has_more`, `rows_saved`, `duplicates_skipped`)를 기록합니다.
-
-| `stop_reason` | 의미 |
-|---|---|
-| `no_next_page` | 더 받을 페이지가 없음 (전량 수집) |
-| `page_limit` | `--max-pages` 상한 도달. `has_more=true`면 남은 댓글이 있음 |
-| `since_days_reached` | `--since-days` 기준보다 오래된 댓글에 도달 |
-| `error` | 조회 중 오류. 그 전까지 받은 행만 저장 |
-
-## 데이터베이스 구조
-
-| 테이블 | 한 행의 의미 | 기본키 |
-|---|---|---|
-| `lab_videos` | 영상 1편 | `video_id` |
-| `lab_comments` | 최상위 댓글 1개 | `comment_id` |
-
-`lab_comments.video_id`는 `lab_videos.video_id`를 참조합니다(외래키). 두 테이블 모두 RLS를 켜고 정책을 만들지 않았으므로 공개 키로는 데이터를 읽을 수 없습니다.
-
-Supabase SQL Editor에서 저장 건수를 확인하는 쿼리:
-
-```sql
-SELECT v.video_id, v.label, v.entry, v.title,
-       count(c.comment_id) AS comments
-FROM public.lab_videos AS v
-LEFT JOIN public.lab_comments AS c ON c.video_id = v.video_id
-GROUP BY v.video_id, v.label, v.entry, v.title;
-```
-
-## 방법론 메모
-
-### API 요청과 페이지네이션
-
-`youtube.commentThreads().list(...)`는 요청 조건만 구성하고, `.execute()`를 호출해야 실제 HTTP 요청이 전송됩니다.
-한 번의 요청은 최대 100개까지만 돌려주므로, 응답의 `nextPageToken`을 다음 요청의 `pageToken`에 넣어 반복합니다. 응답에 `nextPageToken`이 없으면 마지막 페이지입니다.
-
-1차 시행에서는 5페이지를 받고(저장 행 기준 100+100+100+100+48) `no_next_page`로 종료했습니다.
-
-### 중복 처리
-
-중복은 두 단계에서 막습니다.
-
-1. **수집 중**: 이번 실행에서 본 `comment_id`를 집합(`seen`)에 담고, 이미 있으면 건너뜁니다. 여러 영상을 한 번에 수집할 때도 같은 집합을 공유합니다. 1차 시행에서는 앞 페이지에서 이미 받은 댓글 1개가 마지막 페이지에 다시 나와 이 단계에서 걸러졌습니다. 최신순 조회 중에 새 댓글이 달리면 페이지가 밀리면서 이런 일이 생길 수 있습니다.
-2. **DB 저장 시**: `comment_id`가 기본키이고 `INSERT ... ON CONFLICT (comment_id) DO NOTHING`을 사용합니다. 같은 수집 폴더를 두 번 올려도 행 수가 늘지 않습니다.
-
-같은 본문이라도 `comment_id`가 다르면 서로 다른 사람이 쓴 별개의 댓글로 보고 둘 다 유지합니다.
-
-재업로드 시 이미 있는 댓글의 본문·좋아요 수는 갱신하지 않습니다. 시점별 변화를 보려면 별도의 관측 테이블이 필요합니다.
-
-### 수집 범위의 한계
-
-- 최상위 댓글만 수집하며 답글 본문은 포함하지 않습니다. `reply_count`는 답글 개수일 뿐입니다. 답글이 필요하면 `comments().list(parentId=댓글ID)`로 따로 조회해야 합니다.
-- `order="time"`(최신순)으로 받습니다. 인기순(`relevance`)과 결과 순서가 다릅니다.
-- `like_count`와 `reply_count`는 수집 시점의 값입니다.
-
-## 파일 구성
-
-### 이 프로젝트에서 사용하는 파일
+## 코드와 출력 구조
 
 | 파일 | 역할 |
 |---|---|
-| `collect_comments.py` | YouTube 댓글 수집 → CSV·로그 저장 |
-| `upload_supabase.py` | 수집 폴더를 Supabase에 저장, 건수 조회 |
-| `llm-ev.py` | 수집한 댓글의 LLM 채점 (시리즈 비교용 항목으로 수정) |
-| `requirements-uv.txt` | 패키지 목록 |
-| `.python-version` | Python 3.11 지정 |
+| `collect_comments.py` | 최상위 댓글 페이지네이션·ID 중복 제거·기존 12열 CSV 및 JSON |
+| `collect_replies.py` | 답글 전체 페이지 조회·부모 관계·전체 댓글 통합 |
+| `categorize_comments.py`, `comment_categories.json` | 표5 방식 다중 태그 및 감성 교차 집계 |
+| `train_labeled_comments.py` | 실제 댓글 라벨 학습·그룹 분할·후보 비교·테스트·오류 분석 |
+| `analyze_comments.py` | 합성 리뷰 모델을 이용한 탐색용 추론 |
+| `week06/` | 업로드 실습 ZIP의 학습 코드·합성 예제·원본 테스트 |
+| `upload_supabase.py` | 기존 최상위 댓글 DB 저장 |
 
-### 원본 저장소에서 가져온 파일 (JTBC 뉴스 분석용, 현재 사용 안 함)
+수집 폴더 `output/<실행시각>/`에는 `comments.csv/json`(최상위), `replies.csv/json`(답글), `all_comments.csv/json`(전체), `collection_log.json`과 답글 수집 로그를 저장합니다. 전체 파일의 `parent_id`와 `comment_type`으로 원댓글·답글을 구분합니다. `page_limit` 또는 오류로 종료하면 전체 수집으로 취급하지 않습니다.
 
-| 파일 | 원래 역할 |
-|---|---|
-| `data_scrape.py` | 재생목록 전체 순회 + 댓글·자막 수집 + DB 저장 (영상당 첫 100개만) |
-| `stt.py`, `stt_resume.py` | 영상 음성을 Whisper로 받아쓰기 |
-| `collect_missing_videos.py` | 특정 기간 누락 영상 재수집 |
-| `ev-run.py` | 뉴스 대본 공정성 평가 |
-| `apitest.py`, `llm-tst.py`, `test_openai.py`, `test_download.py` | API 연결 테스트 |
-| `main.py` | 인사말 출력 |
+최신 학습 경로의 `analysis_ai/`에는 후보 검증 점수, 테스트 점수, 혼동행렬, 오류 사례, 특징 가중치, 분할 목록 및 `comments_labeled_and_lr.csv`를 저장합니다. AI 감성 라벨·반응 대상·LR 이진 예측·긍정 확률·분할을 별도 열로 보존합니다. 새 원본 데이터와 댓글별 라벨 파일은 별도 전달하며 이 저장소에는 추가하지 않았습니다.
 
-## 자주 발생하는 오류
+기존 Supabase 업로더는 최상위 댓글용입니다. 답글 관계 저장은 스키마 확장이 필요하며 이번 재수집에서는 외부 DB 업로드를 실행하지 않았습니다. 기존 `llm-ev.py`는 별도 선택 기능이며 최신 TF-IDF/LR 실험에는 사용하지 않았습니다.
 
-| 증상 | 원인과 해결 |
-|---|---|
-| `401 API keys are not supported by this API` | 키가 `AIza`로 시작하지 않음. Google Cloud 콘솔의 사용자 인증 정보에서 API 키를 새로 발급 |
-| `403 accessNotConfigured` | 키를 만든 프로젝트에서 YouTube Data API v3를 사용 설정하지 않음 |
-| `403 commentsDisabled` | 댓글이 꺼진 영상. 다른 영상 선택 |
-| `403 quotaExceeded` | 일일 할당량 초과. 다음 날 재시도 |
-| DB 연결 시간 초과 | Direct 연결(`db.<ref>.supabase.co`)을 사용 중. Session pooler 주소로 교체 |
-| `Tenant or user not found` | 사용자명이 `postgres.<프로젝트참조값>` 형식이 아니거나 지역이 틀림. 콘솔에서 다시 복사 |
-| `28P01` 인증 실패 | DB 비밀번호 오류. Settings → Database에서 재설정 후 `.env` 수정 |
-| `42P01` 테이블 없음 | `upload_supabase.py --init-db`를 먼저 실행 |
-| `ModuleNotFoundError` | 가상환경이 아닌 시스템 Python으로 실행함. `./.venv/bin/python`으로 실행 |
-| `Couldn't find ffmpeg` 경고 | 수집·저장에는 영향 없음. STT 사용 시 `brew install ffmpeg` |
+## 검증과 출처
 
-## 참고 자료
+기존 실습·수집·답글·댓글 구분 관련 테스트 24개를 통과했습니다. 실수집 결과의 고유 ID, 부모 연결, 파일 건수, 영상별 합계와 페이지 종료를 별도로 확인했습니다.
 
-- [YouTube Data API — commentThreads.list](https://developers.google.com/youtube/v3/docs/commentThreads/list)
-- [YouTube Data API — comments.list (답글)](https://developers.google.com/youtube/v3/docs/comments/list)
-- [Supabase — Connecting to Postgres](https://supabase.com/docs/guides/database/connecting-to-postgres)
-- [Supabase — Row Level Security](https://supabase.com/docs/guides/database/postgres/row-level-security)
-- [psycopg2 사용법](https://www.psycopg.org/docs/usage.html)
+- 기준 프로젝트: [CNT3054_team7](https://github.com/mcguiver909/CNT3054_team7)
+- 수업 실습 원본: [111usionBin/jtbc-2025](https://github.com/111usionBin/jtbc-2025)
+- 제공 자료: CNT3054.zip, 기존 과제보고서, 6주차 최종 보고서
+- YouTube API: [commentThreads.list](https://developers.google.com/youtube/v3/docs/commentThreads/list), [comments.list](https://developers.google.com/youtube/v3/docs/comments/list)
