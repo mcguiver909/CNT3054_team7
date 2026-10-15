@@ -111,22 +111,16 @@ def load_targets(args):
 def make_youtube_client():
     """.env의 키로 YouTube API 요청 객체를 만든다."""
     load_dotenv(BASE / ".env")
-    api_key = os.getenv("google_cloud_api_key")
+    load_dotenv(Path.cwd() / ".env")
+    api_key = os.getenv("YOUTUBE_API_KEY") or os.getenv("google_cloud_api_key")
 
     if not api_key:
         raise SystemExit(
-            ".env에서 google_cloud_api_key를 찾을 수 없습니다.\n"
+            ".env 또는 환경변수에서 YOUTUBE_API_KEY (기존 google_cloud_api_key)를 찾을 수 없습니다.\n"
             f"확인할 파일: {BASE / '.env'}"
         )
-    if not api_key.startswith("AIza"):
-        print(
-            f"[경고] 키가 'AIza'로 시작하지 않습니다 (현재: {api_key[:4]}...).\n"
-            "       YouTube Data API v3는 Google Cloud 콘솔에서 만든 API 키를 요구합니다.\n"
-            "       401 'API keys are not supported' 오류가 나면 키부터 다시 발급하세요.",
-            file=sys.stderr,
-        )
 
-    return build("youtube", "v3", developerKey=api_key)
+    return build("youtube", "v3", developerKey=api_key, cache_discovery=False)
 
 
 def get_video_info(youtube, video_id):
@@ -188,6 +182,7 @@ def collect_comments(youtube, target, video_title, max_pages, seen, since_days=N
     page_token = None
     pages_received = 0
     stop_reason = "page_limit"
+    error_status = None
     duplicates = 0
     filtered_out = 0
 
@@ -203,7 +198,8 @@ def collect_comments(youtube, target, video_title, max_pages, seen, since_days=N
             ).execute()
         except HttpError as exc:
             stop_reason = "error"
-            print(f"  [오류] 댓글 조회 실패: {exc}", file=sys.stderr)
+            error_status = int(exc.resp.status)
+            print(f"  [오류] 댓글 조회 실패: HTTP {exc.resp.status}", file=sys.stderr)
             print(f"         그 전까지 받은 {len(rows)}행만 저장합니다.", file=sys.stderr)
             break
 
@@ -246,7 +242,8 @@ def collect_comments(youtube, target, video_title, max_pages, seen, since_days=N
         "video_id": target["video_id"],
         "pages_received": pages_received,
         "stop_reason": stop_reason,
-        "has_more": bool(page_token) and stop_reason == "page_limit",
+        "has_more": None if stop_reason == "error" else bool(page_token) and stop_reason == "page_limit",
+        "error_status": error_status,
         "rows_saved": len(rows),
         "duplicates_skipped": duplicates,
         "filtered_out_by_since_days": filtered_out,
@@ -256,7 +253,7 @@ def collect_comments(youtube, target, video_title, max_pages, seen, since_days=N
 
 def save_results(rows, logs, run_conditions):
     """comments.csv와 collection_log.json을 이번 실행 폴더에 저장한다."""
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     folder = OUTPUT_DIR / stamp
     folder.mkdir(parents=True, exist_ok=True)
 
@@ -265,6 +262,8 @@ def save_results(rows, logs, run_conditions):
         writer = csv.DictWriter(f, fieldnames=COLUMNS)
         writer.writeheader()
         writer.writerows(rows)
+
+    (folder / "comments.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
 
     log_path = folder / "collection_log.json"
     with log_path.open("w", encoding="utf-8") as f:
@@ -295,6 +294,8 @@ def main():
                         help="최근 N일 이내 댓글만 수집")
     args = parser.parse_args()
 
+    if args.max_pages < 1 or (args.since_days is not None and args.since_days < 1):
+        parser.error("max-pages와 since-days는 양수여야 합니다.")
     targets = load_targets(args)
     youtube = make_youtube_client()
 
@@ -350,4 +351,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except HttpError as exc:
+        raise SystemExit(f"YouTube API 요청 실패: HTTP {exc.resp.status}. 키 권한·할당량을 확인하세요.") from None

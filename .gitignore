@@ -13,3 +13,14 @@ ev-index.txt
 evaluation_results.csv
 .env.bak
 .DS_Store
+
+# Credential variants and local caches
+.env.*
+!.env.example
+.matplotlib/
+
+# New experiment outputs and local caches (previously tracked data is preserved)
+output/
+verification/
+work/
+status.json

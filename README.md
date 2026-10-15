@@ -5,6 +5,28 @@ YouTube 댓글을 수집해 Supabase(PostgreSQL)에 저장하고, 시리즈·리
 
 수업 실습 코드의 원본은 [111usionBin/jtbc-2025](https://github.com/111usionBin/jtbc-2025)이며, 우리 주제에 맞게 수집·저장 코드를 새로 작성했습니다.
 
+## 전체 댓글 수집과 댓글 구분 및 TF-IDF 감성분류
+
+기존 수집 코드에 공개 답글 페이지 조회, 원댓글-답글 연결, 표5 방식의 댓글 구분 및 6주차 방식의 TF-IDF·로지스틱 회귀 분석을 추가했습니다. 영상 목록은 videos.json에 기존 몰아보기와 추가 영상 3개를 등록했습니다. 새 실제 데이터와 실험 결과는 저장소에 포함하지 않고 별도 전달합니다.
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-analysis.txt
+# .env에 YOUTUBE_API_KEY 설정 (기존 google_cloud_api_key도 지원)
+.venv/bin/python run_pipeline.py --include-replies --max-pages 100
+```
+
+- `collect_comments.py`: 기존 최상위 댓글 수집·ID 중복 제거·12열 CSV 유지, JSON 추가.
+- `collect_replies.py`: comments.list(parentId=...)로 공개 답글의 모든 페이지를 수집. all_comments.csv/json에 parent_id와 comment_type을 기록.
+- `analyze_comments.py`: 6주차 합성 리뷰로 학습한 TF-IDF/LR의 탐색용 추론. 실제 댓글 성능과 구분.
+- `categorize_comments.py` + `comment_categories.json`: 작품·캐릭터 언급, 과거·현재 대비·하락 인식, 영상·제작자 반응, 타임스탬프를 다중 태그로 기록하고 감성 예측과 교차 집계.
+- `train_labeled_comments.py`: 별도로 라벨링한 실제 댓글의 AI 참조 라벨을 사용해 그룹 분할·후보 비교·최종 테스트·오류·혼동행렬을 저장. AI 라벨과 사람 합의 정답을 구분.
+- `week06/`: 업로드 ZIP의 학습 코드·합성 리뷰·원본 테스트를 유지.
+
+[실행 안내](실행안내.md)에 출력 파일 구분과 라벨 출처, 학습/검증/테스트 사용법을 정리했습니다. API 키·.env·로컬 환경·새 실험 결과는 커밋하지 않습니다. 기존 Supabase 업로더는 최상위 댓글용이며 답글 관계 저장은 별도 스키마 확장이 필요합니다.
+
+아래는 기존 프로젝트 설명과 1차 수집 기록입니다.
+
 ## 주제 (논의 중)
 
 - **시리즈 영화**: 장르별 비교, 흥행도 차이가 큰 편끼리의 리뷰 차이, 시리즈 장기화에 따른 반응 변화
